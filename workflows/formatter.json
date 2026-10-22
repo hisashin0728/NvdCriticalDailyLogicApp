@@ -1,0 +1,1166 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {},
+  "triggers": {
+    "manual": {
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "required": [
+            "ReportDate",
+            "PublishedCount",
+            "Cves",
+            "CollectedAt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ReportDate": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 10
+            },
+            "PublishedCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "CollectedAt": {
+              "type": "string"
+            },
+            "Cves": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Cve"
+              }
+            }
+          },
+          "definitions": {
+            "Page": {
+              "type": "object",
+              "required": [
+                "startIndex",
+                "resultsPerPage",
+                "totalResults",
+                "vulnerabilities"
+              ],
+              "properties": {
+                "startIndex": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "resultsPerPage": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2000
+                },
+                "totalResults": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "vulnerabilities": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "cve"
+                    ],
+                    "properties": {
+                      "cve": {
+                        "$ref": "#/definitions/Cve"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Cve": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "id",
+                "published"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 13
+                },
+                "published": {
+                  "type": "string",
+                  "minLength": 19
+                },
+                "lastModified": {
+                  "type": "string"
+                },
+                "vulnStatus": {
+                  "type": "string"
+                },
+                "descriptions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "value"
+                    ],
+                    "properties": {
+                      "lang": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "metrics": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "cvssMetricV40": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/definitions/Assessment40"
+                      }
+                    },
+                    "cvssMetricV31": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/definitions/Assessment31"
+                      }
+                    }
+                  }
+                },
+                "configurations": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Configuration"
+                  }
+                },
+                "affected": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            },
+            "Assessment40": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "cvssData"
+              ],
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "cvssData": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/BaseScore"
+                    },
+                    {
+                      "properties": {
+                        "version": {
+                          "enum": [
+                            "4.0"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "Assessment31": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "cvssData"
+              ],
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "cvssData": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/BaseScore"
+                    },
+                    {
+                      "properties": {
+                        "version": {
+                          "enum": [
+                            "3.1"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "BaseScore": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "version",
+                "baseScore",
+                "baseSeverity"
+              ],
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "baseScore": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "baseSeverity": {
+                  "type": "string",
+                  "enum": [
+                    "NONE",
+                    "LOW",
+                    "MEDIUM",
+                    "HIGH",
+                    "CRITICAL"
+                  ]
+                }
+              },
+              "oneOf": [
+                {
+                  "properties": {
+                    "baseSeverity": {
+                      "enum": [
+                        "CRITICAL"
+                      ]
+                    },
+                    "baseScore": {
+                      "minimum": 9
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "baseSeverity": {
+                      "enum": [
+                        "NONE",
+                        "LOW",
+                        "MEDIUM",
+                        "HIGH"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "Configuration": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "operator": {
+                  "type": "string",
+                  "enum": [
+                    "AND",
+                    "OR"
+                  ]
+                },
+                "negate": {
+                  "type": "boolean"
+                },
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Configuration"
+                  }
+                },
+                "children": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Configuration"
+                  }
+                },
+                "cpeMatch": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "required": [
+                      "vulnerable",
+                      "criteria"
+                    ],
+                    "properties": {
+                      "vulnerable": {
+                        "type": "boolean"
+                      },
+                      "criteria": {
+                        "type": "string"
+                      },
+                      "versionStartIncluding": {
+                        "type": "string"
+                      },
+                      "versionStartExcluding": {
+                        "type": "string"
+                      },
+                      "versionEndIncluding": {
+                        "type": "string"
+                      },
+                      "versionEndExcluding": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "actions": {
+    "Initialize_ReportBody": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "ReportBody",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "Initialize_NodeQueue": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "NodeQueue",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_ReportBody": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_HadVulnerableMatch": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "HadVulnerableMatch",
+            "type": "boolean",
+            "value": false
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_NodeQueue": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_CveNumber": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "CveNumber",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_HadVulnerableMatch": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Validate_Input": {
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@triggerBody()",
+        "schema": {
+          "type": "object",
+          "required": [
+            "ReportDate",
+            "PublishedCount",
+            "Cves",
+            "CollectedAt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ReportDate": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 10
+            },
+            "PublishedCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "CollectedAt": {
+              "type": "string"
+            },
+            "Cves": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Cve"
+              }
+            }
+          },
+          "definitions": {
+            "Page": {
+              "type": "object",
+              "required": [
+                "startIndex",
+                "resultsPerPage",
+                "totalResults",
+                "vulnerabilities"
+              ],
+              "properties": {
+                "startIndex": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "resultsPerPage": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2000
+                },
+                "totalResults": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "vulnerabilities": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "cve"
+                    ],
+                    "properties": {
+                      "cve": {
+                        "$ref": "#/definitions/Cve"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Cve": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "id",
+                "published"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 13
+                },
+                "published": {
+                  "type": "string",
+                  "minLength": 19
+                },
+                "lastModified": {
+                  "type": "string"
+                },
+                "vulnStatus": {
+                  "type": "string"
+                },
+                "descriptions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "value"
+                    ],
+                    "properties": {
+                      "lang": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "metrics": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "cvssMetricV40": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/definitions/Assessment40"
+                      }
+                    },
+                    "cvssMetricV31": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/definitions/Assessment31"
+                      }
+                    }
+                  }
+                },
+                "configurations": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Configuration"
+                  }
+                },
+                "affected": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            },
+            "Assessment40": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "cvssData"
+              ],
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "cvssData": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/BaseScore"
+                    },
+                    {
+                      "properties": {
+                        "version": {
+                          "enum": [
+                            "4.0"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "Assessment31": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "cvssData"
+              ],
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "cvssData": {
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/BaseScore"
+                    },
+                    {
+                      "properties": {
+                        "version": {
+                          "enum": [
+                            "3.1"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "BaseScore": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "version",
+                "baseScore",
+                "baseSeverity"
+              ],
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "baseScore": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "baseSeverity": {
+                  "type": "string",
+                  "enum": [
+                    "NONE",
+                    "LOW",
+                    "MEDIUM",
+                    "HIGH",
+                    "CRITICAL"
+                  ]
+                }
+              },
+              "oneOf": [
+                {
+                  "properties": {
+                    "baseSeverity": {
+                      "enum": [
+                        "CRITICAL"
+                      ]
+                    },
+                    "baseScore": {
+                      "minimum": 9
+                    }
+                  }
+                },
+                {
+                  "properties": {
+                    "baseSeverity": {
+                      "enum": [
+                        "NONE",
+                        "LOW",
+                        "MEDIUM",
+                        "HIGH"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "Configuration": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "operator": {
+                  "type": "string",
+                  "enum": [
+                    "AND",
+                    "OR"
+                  ]
+                },
+                "negate": {
+                  "type": "boolean"
+                },
+                "nodes": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Configuration"
+                  }
+                },
+                "children": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/Configuration"
+                  }
+                },
+                "cpeMatch": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "required": [
+                      "vulnerable",
+                      "criteria"
+                    ],
+                    "properties": {
+                      "vulnerable": {
+                        "type": "boolean"
+                      },
+                      "criteria": {
+                        "type": "string"
+                      },
+                      "versionStartIncluding": {
+                        "type": "string"
+                      },
+                      "versionStartExcluding": {
+                        "type": "string"
+                      },
+                      "versionEndIncluding": {
+                        "type": "string"
+                      },
+                      "versionEndExcluding": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "Initialize_CveNumber": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Validate_Formatter_Report_Date": {
+      "type": "ParseJson",
+      "inputs": {
+        "content": "@equals(formatDateTime(triggerBody()?['ReportDate'], 'yyyy-MM-dd'), triggerBody()?['ReportDate'])",
+        "schema": {
+          "type": "boolean",
+          "enum": [
+            true
+          ]
+        }
+      },
+      "runAfter": {
+        "Validate_Input": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Append_Report_Header": {
+      "type": "AppendToStringVariable",
+      "inputs": {
+        "name": "ReportBody",
+        "value": "@concat('NVD CRITICAL Daily Vulnerability Report', decodeUriComponent('%0A'), 'Report date (JST): ', triggerBody()?['ReportDate'], decodeUriComponent('%0A'), 'NVD collected at (UTC): ', triggerBody()?['CollectedAt'], decodeUriComponent('%0A'), 'Daily vulnerability count (distinct CVEs): ', string(length(triggerBody()?['Cves'])), decodeUriComponent('%0A'), 'All published CVEs inspected: ', string(triggerBody()?['PublishedCount']), decodeUriComponent('%0A'), 'Selection: CVSS 4.0 CRITICAL OR CVSS 3.1 CRITICAL (all assessment sources).', decodeUriComponent('%0A'), 'Completeness: all pages verified and two complete snapshots matched.', decodeUriComponent('%0A'), 'LLM used: false; token overflow: not applicable.', decodeUriComponent('%0A'), decodeUriComponent('%0A'))"
+      },
+      "runAfter": {
+        "Validate_Formatter_Report_Date": [
+          "Succeeded"
+        ]
+      }
+    },
+    "For_each_CVE": {
+      "type": "Foreach",
+      "foreach": "@sort(triggerBody()?['Cves'], 'id')",
+      "actions": {
+        "Validate_Formatted_CVE_Id": {
+          "type": "ParseJson",
+          "inputs": {
+            "content": "@and(startsWith(items('For_each_CVE')?['id'], 'CVE-'), equals(substring(items('For_each_CVE')?['id'], 8, 1), '-'), and(greater(length(substring(items('For_each_CVE')?['id'], 4, 4)), 0), equals(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(substring(items('For_each_CVE')?['id'], 4, 4), '0', ''), '1', ''), '2', ''), '3', ''), '4', ''), '5', ''), '6', ''), '7', ''), '8', ''), '9', ''), '')), and(greater(length(substring(items('For_each_CVE')?['id'], 9)), 0), equals(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(substring(items('For_each_CVE')?['id'], 9), '0', ''), '1', ''), '2', ''), '3', ''), '4', ''), '5', ''), '6', ''), '7', ''), '8', ''), '9', ''), '')))",
+            "schema": {
+              "type": "boolean",
+              "enum": [
+                true
+              ]
+            }
+          },
+          "runAfter": {}
+        },
+        "Advance_CVE_Number": {
+          "type": "IncrementVariable",
+          "inputs": {
+            "name": "CveNumber",
+            "value": 1
+          },
+          "runAfter": {
+            "Validate_Formatted_CVE_Id": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Description_Lines": {
+          "type": "Select",
+          "inputs": {
+            "from": "@coalesce(items('For_each_CVE')?['descriptions'], json('[]'))",
+            "select": "@concat('  [', coalesce(item()?['lang'], 'unspecified'), '] ', item()?['value'])"
+          },
+          "runAfter": {
+            "Advance_CVE_Number": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Metric40_Lines": {
+          "type": "Select",
+          "inputs": {
+            "from": "@coalesce(items('For_each_CVE')?['metrics']?['cvssMetricV40'], json('[]'))",
+            "select": "@concat('  baseScore: ', string(item()?['cvssData']?['baseScore']), '; baseSeverity: ', item()?['cvssData']?['baseSeverity'], '; source: ', coalesce(item()?['source'], 'unspecified'), '; type: ', coalesce(item()?['type'], 'unspecified'))"
+          },
+          "runAfter": {
+            "Description_Lines": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Metric31_Lines": {
+          "type": "Select",
+          "inputs": {
+            "from": "@coalesce(items('For_each_CVE')?['metrics']?['cvssMetricV31'], json('[]'))",
+            "select": "@concat('  baseScore: ', string(item()?['cvssData']?['baseScore']), '; baseSeverity: ', item()?['cvssData']?['baseSeverity'], '; source: ', coalesce(item()?['source'], 'unspecified'), '; type: ', coalesce(item()?['type'], 'unspecified'))"
+          },
+          "runAfter": {
+            "Metric40_Lines": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Append_CVE_Section": {
+          "type": "AppendToStringVariable",
+          "inputs": {
+            "name": "ReportBody",
+            "value": "@concat(triggerBody()?['ReportDate'], ' #', string(variables('CveNumber')), ' ', items('For_each_CVE')?['id'], ' ', '------------------------------------------------------------------------', decodeUriComponent('%0A'), 'CVE: ', items('For_each_CVE')?['id'], decodeUriComponent('%0A'), 'URL: https://nvd.nist.gov/vuln/detail/', items('For_each_CVE')?['id'], decodeUriComponent('%0A'), 'Published (NVD UTC): ', items('For_each_CVE')?['published'], decodeUriComponent('%0A'), 'Last modified (NVD UTC): ', coalesce(items('For_each_CVE')?['lastModified'], 'Not provided by NVD'), decodeUriComponent('%0A'), 'Description (full NVD text):', decodeUriComponent('%0A'), if(empty(body('Description_Lines')), concat('  Not provided by NVD.', decodeUriComponent('%0A')), concat(join(body('Description_Lines'), decodeUriComponent('%0A')), decodeUriComponent('%0A'))), 'CVSS 4.0 assessments:', decodeUriComponent('%0A'), if(empty(body('Metric40_Lines')), concat('  baseScore: Not provided by NVD; baseSeverity: Not provided by NVD', decodeUriComponent('%0A')), concat(join(body('Metric40_Lines'), decodeUriComponent('%0A')), decodeUriComponent('%0A'))), 'CVSS 3.1 assessments:', decodeUriComponent('%0A'), if(empty(body('Metric31_Lines')), concat('  baseScore: Not provided by NVD; baseSeverity: Not provided by NVD', decodeUriComponent('%0A')), concat(join(body('Metric31_Lines'), decodeUriComponent('%0A')), decodeUriComponent('%0A'))), 'Affected Vendor / Product / Version (vulnerable CPE matches):', decodeUriComponent('%0A'))"
+          },
+          "runAfter": {
+            "Metric31_Lines": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Reset_Match_Flag": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "HadVulnerableMatch",
+            "value": false
+          },
+          "runAfter": {
+            "Append_CVE_Section": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Initialize_Node_Queue": {
+          "type": "SetVariable",
+          "inputs": {
+            "name": "NodeQueue",
+            "value": "@coalesce(items('For_each_CVE')?['configurations'], json('[]'))"
+          },
+          "runAfter": {
+            "Reset_Match_Flag": [
+              "Succeeded"
+            ]
+          }
+        },
+        "If_Config_Exists": {
+          "type": "If",
+          "expression": "@not(empty(variables('NodeQueue')))",
+          "actions": {
+            "Walk_CPE_Tree": {
+              "type": "Until",
+              "expression": "@empty(variables('NodeQueue'))",
+              "actions": {
+                "Current_Node": {
+                  "type": "Compose",
+                  "inputs": "@first(variables('NodeQueue'))",
+                  "runAfter": {}
+                },
+                "Remaining_Nodes": {
+                  "type": "Compose",
+                  "inputs": "@skip(variables('NodeQueue'), 1)",
+                  "runAfter": {
+                    "Current_Node": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Dequeue_Node": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "NodeQueue",
+                    "value": "@outputs('Remaining_Nodes')"
+                  },
+                  "runAfter": {
+                    "Remaining_Nodes": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "For_each_Node": {
+                  "type": "Foreach",
+                  "foreach": "@coalesce(outputs('Current_Node')?['nodes'], json('[]'))",
+                  "actions": {
+                    "Enqueue_Node": {
+                      "type": "AppendToArrayVariable",
+                      "inputs": {
+                        "name": "NodeQueue",
+                        "value": "@items('For_each_Node')"
+                      },
+                      "runAfter": {}
+                    }
+                  },
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "runAfter": {
+                    "Dequeue_Node": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "For_each_Child": {
+                  "type": "Foreach",
+                  "foreach": "@coalesce(outputs('Current_Node')?['children'], json('[]'))",
+                  "actions": {
+                    "Enqueue_Child": {
+                      "type": "AppendToArrayVariable",
+                      "inputs": {
+                        "name": "NodeQueue",
+                        "value": "@items('For_each_Child')"
+                      },
+                      "runAfter": {}
+                    }
+                  },
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "runAfter": {
+                    "For_each_Node": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Vulnerable_CPE_Matches": {
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@coalesce(outputs('Current_Node')?['cpeMatch'], json('[]'))",
+                    "where": "@equals(item()?['vulnerable'], true)"
+                  },
+                  "runAfter": {
+                    "For_each_Child": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "CPE_Parts": {
+                  "type": "Select",
+                  "inputs": {
+                    "from": "@body('Vulnerable_CPE_Matches')",
+                    "select": {
+                      "parts": "@split(replace(replace(replace(item()?['criteria'], '%', '%25'), '\\\\', '%5C'), '\\:', '%3A'), ':')",
+                      "match": "@item()"
+                    }
+                  },
+                  "runAfter": {
+                    "Vulnerable_CPE_Matches": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Malformed_CPE_Parts": {
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@body('CPE_Parts')",
+                    "where": "@not(equals(length(item()?['parts']), 13))"
+                  },
+                  "runAfter": {
+                    "CPE_Parts": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Validate_CPE_Components": {
+                  "type": "ParseJson",
+                  "inputs": {
+                    "content": "@empty(body('Malformed_CPE_Parts'))",
+                    "schema": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "runAfter": {
+                    "Malformed_CPE_Parts": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Invalid_CPE_Prefix": {
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@body('CPE_Parts')",
+                    "where": "@not(and(equals(item()?['parts'][0], 'cpe'), equals(item()?['parts'][1], '2.3')))"
+                  },
+                  "runAfter": {
+                    "Validate_CPE_Components": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "Validate_CPE_Prefix": {
+                  "type": "ParseJson",
+                  "inputs": {
+                    "content": "@empty(body('Invalid_CPE_Prefix'))",
+                    "schema": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "runAfter": {
+                    "Invalid_CPE_Prefix": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "CPE_Lines": {
+                  "type": "Select",
+                  "inputs": {
+                    "from": "@body('CPE_Parts')",
+                    "select": "@concat('  Vendor: ', replace(replace(replace(item()?['parts'][3], '%3A', '\\:'), '%5C', '\\\\'), '%25', '%'), ' / Product: ', replace(replace(replace(item()?['parts'][4], '%3A', '\\:'), '%5C', '\\\\'), '%25', '%'), ' / Version: ', replace(replace(replace(item()?['parts'][5], '%3A', '\\:'), '%5C', '\\\\'), '%25', '%'), decodeUriComponent('%0A'), '    CPE: ', item()?['match']?['criteria'], decodeUriComponent('%0A'), '    versionStartIncluding: ', string(coalesce(item()?['match']?['versionStartIncluding'], 'Not specified')), decodeUriComponent('%0A'), '    versionStartExcluding: ', string(coalesce(item()?['match']?['versionStartExcluding'], 'Not specified')), decodeUriComponent('%0A'), '    versionEndIncluding: ', string(coalesce(item()?['match']?['versionEndIncluding'], 'Not specified')), decodeUriComponent('%0A'), '    versionEndExcluding: ', string(coalesce(item()?['match']?['versionEndExcluding'], 'Not specified')))"
+                  },
+                  "runAfter": {
+                    "Validate_CPE_Prefix": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "If_Any_Vulnerable_CPE": {
+                  "type": "If",
+                  "expression": "@not(empty(body('CPE_Parts')))",
+                  "actions": {
+                    "Append_CPE_Lines": {
+                      "type": "AppendToStringVariable",
+                      "inputs": {
+                        "name": "ReportBody",
+                        "value": "@concat(join(body('CPE_Lines'), decodeUriComponent('%0A')), decodeUriComponent('%0A'))"
+                      },
+                      "runAfter": {}
+                    },
+                    "Remember_Vulnerable_Match": {
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "HadVulnerableMatch",
+                        "value": true
+                      },
+                      "runAfter": {
+                        "Append_CPE_Lines": [
+                          "Succeeded"
+                        ]
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  },
+                  "runAfter": {
+                    "CPE_Lines": [
+                      "Succeeded"
+                    ]
+                  }
+                }
+              },
+              "limit": {
+                "count": 5000,
+                "timeout": "PT6H"
+              },
+              "operationOptions": "FailWhenLimitsReached",
+              "runAfter": {}
+            }
+          },
+          "else": {
+            "actions": {}
+          },
+          "runAfter": {
+            "Initialize_Node_Queue": [
+              "Succeeded"
+            ]
+          }
+        },
+        "Append_Full_Applicability": {
+          "type": "AppendToStringVariable",
+          "inputs": {
+            "name": "ReportBody",
+            "value": "@concat(if(variables('HadVulnerableMatch'), '', concat('  Not provided by NVD; see source affected data below.', decodeUriComponent('%0A'))), 'CPE notes: * = ANY, - = NA; escaped component text is preserved.', decodeUriComponent('%0A'), 'Full applicability logic (including AND/OR/negate and environmental conditions):', decodeUriComponent('%0A'), string(coalesce(items('For_each_CVE')?['configurations'], json('[]'))), decodeUriComponent('%0A'), 'NVD affected data (all vendors/products/versions/status/changes):', decodeUriComponent('%0A'), string(coalesce(items('For_each_CVE')?['affected'], json('[]'))), decodeUriComponent('%0A'), decodeUriComponent('%0A'))"
+          },
+          "runAfter": {
+            "If_Config_Exists": [
+              "Succeeded"
+            ]
+          }
+        }
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 1
+        }
+      },
+      "runAfter": {
+        "Append_Report_Header": [
+          "Succeeded"
+        ]
+      }
+    },
+    "If_Zero_Matches": {
+      "type": "If",
+      "expression": "@equals(length(triggerBody()?['Cves']), 0)",
+      "actions": {
+        "Append_Zero_Matches": {
+          "type": "AppendToStringVariable",
+          "inputs": {
+            "name": "ReportBody",
+            "value": "@concat('No CVEs matched in the completed NVD snapshot.', decodeUriComponent('%0A'))"
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "For_each_CVE": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Append_Report_Scope": {
+      "type": "AppendToStringVariable",
+      "inputs": {
+        "name": "ReportBody",
+        "value": "@concat('Scope: NVD assessments available at collection time, grouped by JST publication day. Later enrichment and publication corrections are not retroactively included.', decodeUriComponent('%0A'))"
+      },
+      "runAfter": {
+        "If_Zero_Matches": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Return_TEXT": {
+      "type": "Response",
+      "kind": "Http",
+      "inputs": {
+        "statusCode": 200,
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "ReportBody": "@variables('ReportBody')",
+          "CriticalCount": "@length(triggerBody()?['Cves'])",
+          "LLMUsed": false
+        }
+      },
+      "runAfter": {
+        "Append_Report_Scope": [
+          "Succeeded"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}

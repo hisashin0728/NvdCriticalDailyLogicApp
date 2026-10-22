@@ -1,0 +1,102 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "FirstReportDate": {
+      "type": "String",
+      "defaultValue": "[parameters('firstReportDate')]"
+    }
+  },
+  "triggers": {
+    "Daily_0900_JST": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "timeZone": "Tokyo Standard Time",
+        "startTime": "[parameters('firstScheduleLocalTime')]",
+        "schedule": {
+          "hours": [
+            9
+          ],
+          "minutes": [
+            0
+          ]
+        }
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "runs": 1
+        }
+      }
+    }
+  },
+  "actions": {
+    "Due_Publication_Date": {
+      "type": "Compose",
+      "inputs": "@formatDateTime(addDays(convertFromUtc(utcNow(), 'Tokyo Standard Time'), if(greaterOrEquals(int(formatDateTime(convertFromUtc(utcNow(), 'Tokyo Standard Time'), 'HH')), 9), -1, -2)), 'yyyy-MM-dd')",
+      "runAfter": {}
+    },
+    "If_Date_Is_In_Scope": {
+      "type": "If",
+      "expression": "@greaterOrEquals(ticks(outputs('Due_Publication_Date')), ticks(parameters('FirstReportDate')))",
+      "actions": {
+        "Invoke_Day_Worker": {
+          "type": "Workflow",
+          "inputs": {
+            "host": {
+              "triggerName": "manual",
+              "workflow": {
+                "id": "[resourceId('Microsoft.Logic/workflows', variables('workerName'))]"
+              }
+            },
+            "body": {
+              "ReportDate": "@outputs('Due_Publication_Date')"
+            },
+            "retryPolicy": {
+              "type": "none"
+            }
+          },
+          "runAfter": {}
+        },
+        "If_Day_Not_Accepted": {
+          "type": "If",
+          "expression": "@not(and(equals(actions('Invoke_Day_Worker')?['status'], 'Succeeded'), equals(body('Invoke_Day_Worker')?['Status'], 'mail_accepted')))",
+          "actions": {
+            "Fail_Daily_Run": {
+              "type": "Terminate",
+              "inputs": {
+                "runStatus": "Failed",
+                "runError": {
+                  "code": "DAILY_REPORT_NOT_ACCEPTED",
+                  "message": "@concat('Inspect worker run for ', outputs('Due_Publication_Date'), '. No automatic missed-day replay or cross-run duplicate check is configured.')"
+                }
+              },
+              "runAfter": {}
+            }
+          },
+          "else": {
+            "actions": {}
+          },
+          "runAfter": {
+            "Invoke_Day_Worker": [
+              "Succeeded",
+              "Failed",
+              "TimedOut",
+              "Skipped"
+            ]
+          }
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Due_Publication_Date": [
+          "Succeeded"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}

@@ -1,0 +1,2548 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "type": "Object",
+      "defaultValue": {}
+    },
+    "SenderMailbox": {
+      "type": "String",
+      "defaultValue": "[parameters('senderMailbox')]"
+    },
+    "RecipientEmail": {
+      "type": "String",
+      "defaultValue": "[parameters('recipientEmail')]"
+    },
+    "FirstReportDate": {
+      "type": "String",
+      "defaultValue": "[parameters('firstReportDate')]"
+    },
+    "MailSendingEnabled": {
+      "type": "Bool",
+      "defaultValue": "[parameters('mailSendingEnabled')]"
+    },
+    "MaxMailRequestBytes": {
+      "type": "Int",
+      "defaultValue": "[parameters('maxMailRequestBytes')]"
+    },
+    "NvdPageSize": {
+      "type": "Int",
+      "defaultValue": "[parameters('nvdPageSize')]"
+    },
+    "NvdApiKey": {
+      "type": "SecureString"
+    }
+  },
+  "triggers": {
+    "manual": {
+      "type": "Request",
+      "kind": "Http",
+      "inputs": {
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ReportDate"
+          ],
+          "properties": {
+            "ReportDate": {
+              "type": "string",
+              "minLength": 10,
+              "maxLength": 10
+            }
+          }
+        }
+      }
+    }
+  },
+  "actions": {
+    "Initialize_ReportDate": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "ReportDate",
+            "type": "string",
+            "value": "@coalesce(triggerBody()?['ReportDate'], '')"
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "Initialize_Prepared": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "Prepared",
+            "type": "boolean",
+            "value": false
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_ReportDate": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_ResultStatus": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "ResultStatus",
+            "type": "string",
+            "value": "internal_error"
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_Prepared": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_ErrorCode": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "ErrorCode",
+            "type": "string",
+            "value": "REQUEST_OR_PREPARATION_FAILED"
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_ResultStatus": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_ErrorReason": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "ErrorReason",
+            "type": "string",
+            "value": "No completed phase has been recorded."
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_ErrorCode": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_PublishedCount": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "PublishedCount",
+            "type": "integer",
+            "value": -1
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_ErrorReason": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_CriticalCount": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "CriticalCount",
+            "type": "integer",
+            "value": -1
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_PublishedCount": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_ReportBody": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "ReportBody",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_CriticalCount": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_RequestBase64": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "RequestBase64",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_ReportBody": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_RequestBytes": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "RequestBytes",
+            "type": "integer",
+            "value": -1
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_RequestBase64": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_CollectedAt": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "CollectedAt",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_RequestBytes": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_ScanNumber": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "ScanNumber",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_CollectedAt": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_CurrentCves": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "CurrentCves",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_ScanNumber": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_CurrentIds": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "CurrentIds",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_CurrentCves": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_PreviousSnapshot": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "PreviousSnapshot",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_CurrentIds": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_HasPrevious": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "HasPrevious",
+            "type": "boolean",
+            "value": false
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_PreviousSnapshot": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_SnapshotMatched": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "SnapshotMatched",
+            "type": "boolean",
+            "value": false
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_HasPrevious": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_CollectError": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "CollectError",
+            "type": "boolean",
+            "value": false
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_SnapshotMatched": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_PageIndex": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "PageIndex",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_CollectError": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_ExpectedTotal": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "ExpectedTotal",
+            "type": "integer",
+            "value": -1
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_PageIndex": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_PageDone": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "PageDone",
+            "type": "boolean",
+            "value": false
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_ExpectedTotal": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_CriticalCves": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "CriticalCves",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_PageDone": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_MailAttempt": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "MailAttempt",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_CriticalCves": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_RetryMail": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "RetryMail",
+            "type": "boolean",
+            "value": false
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_MailAttempt": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_MailHttpStatus": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "MailHttpStatus",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_RetryMail": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_MailRequestId": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "MailRequestId",
+            "type": "string",
+            "value": ""
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_MailHttpStatus": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_NotBeforeUtc": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "NotBeforeUtc",
+            "type": "string",
+            "value": "1900-01-01T00:00:00Z"
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_MailRequestId": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Prepare_This_Run": {
+      "type": "Scope",
+      "actions": {
+        "Prepare_Try": {
+          "type": "Scope",
+          "actions": {
+            "Validate_Worker_Request": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@triggerBody()",
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "ReportDate"
+                  ],
+                  "properties": {
+                    "ReportDate": {
+                      "type": "string",
+                      "minLength": 10,
+                      "maxLength": 10
+                    }
+                  }
+                }
+              },
+              "runAfter": {}
+            },
+            "Validate_Mail_Configuration": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": {
+                  "Sender": "@parameters('SenderMailbox')",
+                  "Recipient": "@parameters('RecipientEmail')"
+                },
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "Sender",
+                    "Recipient"
+                  ],
+                  "properties": {
+                    "Sender": {
+                      "type": "string",
+                      "minLength": 3
+                    },
+                    "Recipient": {
+                      "type": "string",
+                      "minLength": 3
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "Validate_Worker_Request": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Find_Invalid_Mail_Characters": {
+              "type": "Query",
+              "inputs": {
+                "from": "@json('[\"\\t\",\"\\n\",\"\\u000b\",\"\\f\",\"\\r\",\"\\u001c\",\"\\u001d\",\"\\u001e\",\"\\u001f\",\" \",\"\\u0085\",\"\\u00a0\",\"\\u1680\",\"\\u2000\",\"\\u2001\",\"\\u2002\",\"\\u2003\",\"\\u2004\",\"\\u2005\",\"\\u2006\",\"\\u2007\",\"\\u2008\",\"\\u2009\",\"\\u200a\",\"\\u2028\",\"\\u2029\",\"\\u202f\",\"\\u205f\",\"\\u3000\",\",\",\";\",\"<\",\">\"]')",
+                "where": "@or(contains(parameters('SenderMailbox'), item()), contains(parameters('RecipientEmail'), item()))"
+              },
+              "runAfter": {
+                "Validate_Mail_Configuration": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Validate_Mail_Addresses": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@and(empty(body('Find_Invalid_Mail_Characters')), and(equals(length(split(parameters('SenderMailbox'), '@')), 2), not(empty(first(split(parameters('SenderMailbox'), '@')))), contains(last(split(parameters('SenderMailbox'), '@')), '.'), not(empty(first(split(last(split(parameters('SenderMailbox'), '@')), '.')))), not(empty(last(split(last(split(parameters('SenderMailbox'), '@')), '.'))))), and(equals(length(split(parameters('RecipientEmail'), '@')), 2), not(empty(first(split(parameters('RecipientEmail'), '@')))), contains(last(split(parameters('RecipientEmail'), '@')), '.'), not(empty(first(split(last(split(parameters('RecipientEmail'), '@')), '.')))), not(empty(last(split(last(split(parameters('RecipientEmail'), '@')), '.'))))))",
+                "schema": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                }
+              },
+              "runAfter": {
+                "Find_Invalid_Mail_Characters": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Current_Due_Date": {
+              "type": "Compose",
+              "inputs": "@formatDateTime(addDays(convertFromUtc(utcNow(), 'Tokyo Standard Time'), if(greaterOrEquals(int(formatDateTime(convertFromUtc(utcNow(), 'Tokyo Standard Time'), 'HH')), 9), -1, -2)), 'yyyy-MM-dd')",
+              "runAfter": {
+                "Validate_Mail_Addresses": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Validate_Report_Date": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@and(equals(formatDateTime(variables('ReportDate'), 'yyyy-MM-dd'), variables('ReportDate')), greaterOrEquals(ticks(variables('ReportDate')), ticks(parameters('FirstReportDate'))), lessOrEquals(ticks(variables('ReportDate')), ticks(outputs('Current_Due_Date'))))",
+                "schema": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                }
+              },
+              "runAfter": {
+                "Current_Due_Date": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Set_Key_Error_Context": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "ErrorCode",
+                "value": "NVD_KEY_NOT_CONFIGURED"
+              },
+              "runAfter": {
+                "Validate_Report_Date": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Validate_NVD_Key": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@and(greaterOrEquals(length(parameters('NvdApiKey')), 16), not(startsWith(parameters('NvdApiKey'), '<')), not(contains(parameters('NvdApiKey'), ' ')), not(contains(parameters('NvdApiKey'), decodeUriComponent('%0A'))), not(contains(parameters('NvdApiKey'), decodeUriComponent('%0D'))), not(contains(parameters('NvdApiKey'), decodeUriComponent('%09'))))",
+                "schema": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                }
+              },
+              "runAfter": {
+                "Set_Key_Error_Context": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Publication_Start_UTC": {
+              "type": "Compose",
+              "inputs": "@convertTimeZone(concat(variables('ReportDate'), 'T00:00:00'), 'Tokyo Standard Time', 'UTC', 'yyyy-MM-ddTHH:mm:ss.fffZ')",
+              "runAfter": {
+                "Validate_NVD_Key": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Publication_Next_Midnight_UTC": {
+              "type": "Compose",
+              "inputs": "@addDays(outputs('Publication_Start_UTC'), 1)",
+              "runAfter": {
+                "Publication_Start_UTC": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Publication_End_UTC": {
+              "type": "Compose",
+              "inputs": "@concat(formatDateTime(addSeconds(outputs('Publication_Next_Midnight_UTC'), -1), 'yyyy-MM-ddTHH:mm:ss'), '.999Z')",
+              "runAfter": {
+                "Publication_Next_Midnight_UTC": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Collect_Matching_Snapshots": {
+              "type": "Until",
+              "expression": "@or(variables('SnapshotMatched'), variables('CollectError'), greaterOrEquals(variables('ScanNumber'), 3))",
+              "actions": {
+                "Collect_One_Snapshot": {
+                  "type": "Scope",
+                  "actions": {
+                    "Reset_Current_CVEs": {
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "CurrentCves",
+                        "value": []
+                      },
+                      "runAfter": {}
+                    },
+                    "Reset_Current_Ids": {
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "CurrentIds",
+                        "value": []
+                      },
+                      "runAfter": {
+                        "Reset_Current_CVEs": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Reset_Page_Index": {
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "PageIndex",
+                        "value": 0
+                      },
+                      "runAfter": {
+                        "Reset_Current_Ids": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Reset_Total": {
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "ExpectedTotal",
+                        "value": -1
+                      },
+                      "runAfter": {
+                        "Reset_Page_Index": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Reset_Page_Done": {
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "PageDone",
+                        "value": false
+                      },
+                      "runAfter": {
+                        "Reset_Total": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Advance_Scan_Number": {
+                      "type": "IncrementVariable",
+                      "inputs": {
+                        "name": "ScanNumber",
+                        "value": 1
+                      },
+                      "runAfter": {
+                        "Reset_Page_Done": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Set_NVD_Error_Context": {
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "ErrorCode",
+                        "value": "NVD_GET_SCHEMA_OR_PAGE_FAILURE"
+                      },
+                      "runAfter": {
+                        "Advance_Scan_Number": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Read_All_Pages": {
+                      "type": "Until",
+                      "expression": "@or(variables('PageDone'), variables('CollectError'))",
+                      "actions": {
+                        "Read_And_Validate_Page": {
+                          "type": "Scope",
+                          "actions": {
+                            "NVD_Rate_Limit_Delay": {
+                              "type": "Wait",
+                              "inputs": {
+                                "interval": {
+                                  "count": 7,
+                                  "unit": "Second"
+                                }
+                              },
+                              "runAfter": {}
+                            },
+                            "Read_NVD_Page": {
+                              "type": "ApiConnection",
+                              "inputs": {
+                                "host": {
+                                  "connection": {
+                                    "name": "@parameters('$connections')['nvd']['connectionId']"
+                                  }
+                                },
+                                "method": "get",
+                                "path": "/rest/json/cves/2.0",
+                                "headers": {
+                                  "apiKey": "@parameters('NvdApiKey')"
+                                },
+                                "queries": {
+                                  "pubStartDate": "@outputs('Publication_Start_UTC')",
+                                  "pubEndDate": "@outputs('Publication_End_UTC')",
+                                  "startIndex": "@variables('PageIndex')",
+                                  "resultsPerPage": "@parameters('NvdPageSize')"
+                                },
+                                "retryPolicy": {
+                                  "type": "exponential",
+                                  "count": 4,
+                                  "interval": "PT7S"
+                                }
+                              },
+                              "runtimeConfiguration": {
+                                "secureData": {
+                                  "properties": [
+                                    "inputs",
+                                    "outputs"
+                                  ]
+                                }
+                              },
+                              "runAfter": {
+                                "NVD_Rate_Limit_Delay": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Parse_NVD_Page": {
+                              "type": "ParseJson",
+                              "inputs": {
+                                "content": "@body('Read_NVD_Page')",
+                                "schema": {
+                                  "type": "object",
+                                  "required": [
+                                    "startIndex",
+                                    "resultsPerPage",
+                                    "totalResults",
+                                    "vulnerabilities"
+                                  ],
+                                  "properties": {
+                                    "startIndex": {
+                                      "type": "integer",
+                                      "minimum": 0
+                                    },
+                                    "resultsPerPage": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 2000
+                                    },
+                                    "totalResults": {
+                                      "type": "integer",
+                                      "minimum": 0
+                                    },
+                                    "vulnerabilities": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "required": [
+                                          "cve"
+                                        ],
+                                        "properties": {
+                                          "cve": {
+                                            "$ref": "#/definitions/Cve"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "definitions": {
+                                    "Page": {
+                                      "type": "object",
+                                      "required": [
+                                        "startIndex",
+                                        "resultsPerPage",
+                                        "totalResults",
+                                        "vulnerabilities"
+                                      ],
+                                      "properties": {
+                                        "startIndex": {
+                                          "type": "integer",
+                                          "minimum": 0
+                                        },
+                                        "resultsPerPage": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 2000
+                                        },
+                                        "totalResults": {
+                                          "type": "integer",
+                                          "minimum": 0
+                                        },
+                                        "vulnerabilities": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "required": [
+                                              "cve"
+                                            ],
+                                            "properties": {
+                                              "cve": {
+                                                "$ref": "#/definitions/Cve"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "Cve": {
+                                      "type": "object",
+                                      "additionalProperties": true,
+                                      "required": [
+                                        "id",
+                                        "published"
+                                      ],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "minLength": 13
+                                        },
+                                        "published": {
+                                          "type": "string",
+                                          "minLength": 19
+                                        },
+                                        "lastModified": {
+                                          "type": "string"
+                                        },
+                                        "vulnStatus": {
+                                          "type": "string"
+                                        },
+                                        "descriptions": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "required": [
+                                              "value"
+                                            ],
+                                            "properties": {
+                                              "lang": {
+                                                "type": "string"
+                                              },
+                                              "value": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          }
+                                        },
+                                        "metrics": {
+                                          "type": "object",
+                                          "additionalProperties": true,
+                                          "properties": {
+                                            "cvssMetricV40": {
+                                              "type": "array",
+                                              "items": {
+                                                "$ref": "#/definitions/Assessment40"
+                                              }
+                                            },
+                                            "cvssMetricV31": {
+                                              "type": "array",
+                                              "items": {
+                                                "$ref": "#/definitions/Assessment31"
+                                              }
+                                            }
+                                          }
+                                        },
+                                        "configurations": {
+                                          "type": "array",
+                                          "items": {
+                                            "$ref": "#/definitions/Configuration"
+                                          }
+                                        },
+                                        "affected": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                          }
+                                        }
+                                      }
+                                    },
+                                    "Assessment40": {
+                                      "type": "object",
+                                      "additionalProperties": true,
+                                      "required": [
+                                        "cvssData"
+                                      ],
+                                      "properties": {
+                                        "source": {
+                                          "type": "string"
+                                        },
+                                        "type": {
+                                          "type": "string"
+                                        },
+                                        "cvssData": {
+                                          "allOf": [
+                                            {
+                                              "$ref": "#/definitions/BaseScore"
+                                            },
+                                            {
+                                              "properties": {
+                                                "version": {
+                                                  "enum": [
+                                                    "4.0"
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    "Assessment31": {
+                                      "type": "object",
+                                      "additionalProperties": true,
+                                      "required": [
+                                        "cvssData"
+                                      ],
+                                      "properties": {
+                                        "source": {
+                                          "type": "string"
+                                        },
+                                        "type": {
+                                          "type": "string"
+                                        },
+                                        "cvssData": {
+                                          "allOf": [
+                                            {
+                                              "$ref": "#/definitions/BaseScore"
+                                            },
+                                            {
+                                              "properties": {
+                                                "version": {
+                                                  "enum": [
+                                                    "3.1"
+                                                  ]
+                                                }
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    },
+                                    "BaseScore": {
+                                      "type": "object",
+                                      "additionalProperties": true,
+                                      "required": [
+                                        "version",
+                                        "baseScore",
+                                        "baseSeverity"
+                                      ],
+                                      "properties": {
+                                        "version": {
+                                          "type": "string"
+                                        },
+                                        "baseScore": {
+                                          "type": "number",
+                                          "minimum": 0,
+                                          "maximum": 10
+                                        },
+                                        "baseSeverity": {
+                                          "type": "string",
+                                          "enum": [
+                                            "NONE",
+                                            "LOW",
+                                            "MEDIUM",
+                                            "HIGH",
+                                            "CRITICAL"
+                                          ]
+                                        }
+                                      },
+                                      "oneOf": [
+                                        {
+                                          "properties": {
+                                            "baseSeverity": {
+                                              "enum": [
+                                                "CRITICAL"
+                                              ]
+                                            },
+                                            "baseScore": {
+                                              "minimum": 9
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "properties": {
+                                            "baseSeverity": {
+                                              "enum": [
+                                                "NONE",
+                                                "LOW",
+                                                "MEDIUM",
+                                                "HIGH"
+                                              ]
+                                            }
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "Configuration": {
+                                      "type": "object",
+                                      "additionalProperties": true,
+                                      "properties": {
+                                        "operator": {
+                                          "type": "string",
+                                          "enum": [
+                                            "AND",
+                                            "OR"
+                                          ]
+                                        },
+                                        "negate": {
+                                          "type": "boolean"
+                                        },
+                                        "nodes": {
+                                          "type": "array",
+                                          "items": {
+                                            "$ref": "#/definitions/Configuration"
+                                          }
+                                        },
+                                        "children": {
+                                          "type": "array",
+                                          "items": {
+                                            "$ref": "#/definitions/Configuration"
+                                          }
+                                        },
+                                        "cpeMatch": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "additionalProperties": true,
+                                            "required": [
+                                              "vulnerable",
+                                              "criteria"
+                                            ],
+                                            "properties": {
+                                              "vulnerable": {
+                                                "type": "boolean"
+                                              },
+                                              "criteria": {
+                                                "type": "string"
+                                              },
+                                              "versionStartIncluding": {
+                                                "type": "string"
+                                              },
+                                              "versionStartExcluding": {
+                                                "type": "string"
+                                              },
+                                              "versionEndIncluding": {
+                                                "type": "string"
+                                              },
+                                              "versionEndExcluding": {
+                                                "type": "string"
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "runAfter": {
+                                "Read_NVD_Page": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Set_Page_Error_Context": {
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "ErrorCode",
+                                "value": "NVD_PAGE_OR_COUNT_MISMATCH"
+                              },
+                              "runAfter": {
+                                "Parse_NVD_Page": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Effective_Expected_Total": {
+                              "type": "Compose",
+                              "inputs": "@if(equals(variables('ExpectedTotal'), -1), body('Parse_NVD_Page')?['totalResults'], variables('ExpectedTotal'))",
+                              "runAfter": {
+                                "Set_Page_Error_Context": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Set_Expected_Total": {
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "ExpectedTotal",
+                                "value": "@outputs('Effective_Expected_Total')"
+                              },
+                              "runAfter": {
+                                "Effective_Expected_Total": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Validate_Page_Metadata": {
+                              "type": "ParseJson",
+                              "inputs": {
+                                "content": "@and(equals(body('Parse_NVD_Page')?['startIndex'], variables('PageIndex')), equals(body('Parse_NVD_Page')?['totalResults'], variables('ExpectedTotal')), lessOrEquals(body('Parse_NVD_Page')?['resultsPerPage'], parameters('NvdPageSize')), lessOrEquals(length(body('Parse_NVD_Page')?['vulnerabilities']), body('Parse_NVD_Page')?['resultsPerPage']), lessOrEquals(add(variables('PageIndex'), length(body('Parse_NVD_Page')?['vulnerabilities'])), variables('ExpectedTotal')), or(greater(length(body('Parse_NVD_Page')?['vulnerabilities']), 0), equals(variables('PageIndex'), variables('ExpectedTotal'))))",
+                                "schema": {
+                                  "type": "boolean",
+                                  "enum": [
+                                    true
+                                  ]
+                                }
+                              },
+                              "runAfter": {
+                                "Set_Expected_Total": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Find_Out_Of_Window_CVEs": {
+                              "type": "Query",
+                              "inputs": {
+                                "from": "@body('Parse_NVD_Page')?['vulnerabilities']",
+                                "where": "@not(and(greaterOrEquals(ticks(item()?['cve']?['published']), ticks(outputs('Publication_Start_UTC'))), less(ticks(item()?['cve']?['published']), ticks(outputs('Publication_Next_Midnight_UTC')))))"
+                              },
+                              "runAfter": {
+                                "Validate_Page_Metadata": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Validate_Publication_Window": {
+                              "type": "ParseJson",
+                              "inputs": {
+                                "content": "@empty(body('Find_Out_Of_Window_CVEs'))",
+                                "schema": {
+                                  "type": "boolean",
+                                  "enum": [
+                                    true
+                                  ]
+                                }
+                              },
+                              "runAfter": {
+                                "Find_Out_Of_Window_CVEs": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Find_Invalid_CVE_Ids": {
+                              "type": "Query",
+                              "inputs": {
+                                "from": "@body('Parse_NVD_Page')?['vulnerabilities']",
+                                "where": "@not(and(startsWith(item()?['cve']?['id'], 'CVE-'), equals(substring(item()?['cve']?['id'], 8, 1), '-'), and(greater(length(substring(item()?['cve']?['id'], 4, 4)), 0), equals(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(substring(item()?['cve']?['id'], 4, 4), '0', ''), '1', ''), '2', ''), '3', ''), '4', ''), '5', ''), '6', ''), '7', ''), '8', ''), '9', ''), '')), and(greater(length(substring(item()?['cve']?['id'], 9)), 0), equals(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(substring(item()?['cve']?['id'], 9), '0', ''), '1', ''), '2', ''), '3', ''), '4', ''), '5', ''), '6', ''), '7', ''), '8', ''), '9', ''), ''))))"
+                              },
+                              "runAfter": {
+                                "Validate_Publication_Window": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Validate_CVE_Ids": {
+                              "type": "ParseJson",
+                              "inputs": {
+                                "content": "@empty(body('Find_Invalid_CVE_Ids'))",
+                                "schema": {
+                                  "type": "boolean",
+                                  "enum": [
+                                    true
+                                  ]
+                                }
+                              },
+                              "runAfter": {
+                                "Find_Invalid_CVE_Ids": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Select_Page_Ids": {
+                              "type": "Select",
+                              "inputs": {
+                                "from": "@body('Parse_NVD_Page')?['vulnerabilities']",
+                                "select": "@item()?['cve']?['id']"
+                              },
+                              "runAfter": {
+                                "Validate_CVE_Ids": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Select_Page_CVEs": {
+                              "type": "Select",
+                              "inputs": {
+                                "from": "@body('Parse_NVD_Page')?['vulnerabilities']",
+                                "select": "@item()?['cve']"
+                              },
+                              "runAfter": {
+                                "Select_Page_Ids": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Merged_Ids": {
+                              "type": "Compose",
+                              "inputs": "@union(variables('CurrentIds'), body('Select_Page_Ids'))",
+                              "runAfter": {
+                                "Select_Page_CVEs": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Validate_No_Duplicate_Ids": {
+                              "type": "ParseJson",
+                              "inputs": {
+                                "content": "@equals(length(outputs('Merged_Ids')), add(length(variables('CurrentIds')), length(body('Select_Page_Ids'))))",
+                                "schema": {
+                                  "type": "boolean",
+                                  "enum": [
+                                    true
+                                  ]
+                                }
+                              },
+                              "runAfter": {
+                                "Merged_Ids": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Merged_CVEs": {
+                              "type": "Compose",
+                              "inputs": "@union(variables('CurrentCves'), body('Select_Page_CVEs'))",
+                              "runAfter": {
+                                "Validate_No_Duplicate_Ids": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Remember_Current_Ids": {
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "CurrentIds",
+                                "value": "@outputs('Merged_Ids')"
+                              },
+                              "runAfter": {
+                                "Merged_CVEs": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Remember_Current_CVEs": {
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "CurrentCves",
+                                "value": "@outputs('Merged_CVEs')"
+                              },
+                              "runAfter": {
+                                "Remember_Current_Ids": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Advance_Page_Index": {
+                              "type": "IncrementVariable",
+                              "inputs": {
+                                "name": "PageIndex",
+                                "value": "@length(body('Parse_NVD_Page')?['vulnerabilities'])"
+                              },
+                              "runAfter": {
+                                "Remember_Current_CVEs": [
+                                  "Succeeded"
+                                ]
+                              }
+                            },
+                            "Set_Page_Done": {
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "PageDone",
+                                "value": "@equals(variables('PageIndex'), variables('ExpectedTotal'))"
+                              },
+                              "runAfter": {
+                                "Advance_Page_Index": [
+                                  "Succeeded"
+                                ]
+                              }
+                            }
+                          },
+                          "runAfter": {}
+                        },
+                        "Stop_After_Page_Failure": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "CollectError",
+                            "value": true
+                          },
+                          "runAfter": {
+                            "Read_And_Validate_Page": [
+                              "Failed",
+                              "TimedOut"
+                            ]
+                          }
+                        }
+                      },
+                      "limit": {
+                        "count": 5000,
+                        "timeout": "PT6H"
+                      },
+                      "operationOptions": "FailWhenLimitsReached",
+                      "runAfter": {
+                        "Set_NVD_Error_Context": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Validate_Full_Count": {
+                      "type": "ParseJson",
+                      "inputs": {
+                        "content": "@and(equals(length(variables('CurrentIds')), variables('ExpectedTotal')), equals(length(variables('CurrentCves')), variables('ExpectedTotal')))",
+                        "schema": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "runAfter": {
+                        "Read_All_Pages": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "Sorted_Current_Snapshot": {
+                      "type": "Compose",
+                      "inputs": "@sort(variables('CurrentCves'), 'id')",
+                      "runAfter": {
+                        "Validate_Full_Count": [
+                          "Succeeded"
+                        ]
+                      }
+                    },
+                    "If_Snapshots_Match": {
+                      "type": "If",
+                      "expression": "@and(variables('HasPrevious'), equals(outputs('Sorted_Current_Snapshot'), variables('PreviousSnapshot')))",
+                      "actions": {
+                        "Set_Snapshot_Matched": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "SnapshotMatched",
+                            "value": true
+                          },
+                          "runAfter": {}
+                        }
+                      },
+                      "else": {
+                        "actions": {
+                          "Remember_Previous_Snapshot": {
+                            "type": "SetVariable",
+                            "inputs": {
+                              "name": "PreviousSnapshot",
+                              "value": "@outputs('Sorted_Current_Snapshot')"
+                            },
+                            "runAfter": {}
+                          },
+                          "Remember_Previous_Exists": {
+                            "type": "SetVariable",
+                            "inputs": {
+                              "name": "HasPrevious",
+                              "value": true
+                            },
+                            "runAfter": {
+                              "Remember_Previous_Snapshot": [
+                                "Succeeded"
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      "runAfter": {
+                        "Sorted_Current_Snapshot": [
+                          "Succeeded"
+                        ]
+                      }
+                    }
+                  },
+                  "runAfter": {}
+                },
+                "Stop_After_Scan_Failure": {
+                  "type": "SetVariable",
+                  "inputs": {
+                    "name": "CollectError",
+                    "value": true
+                  },
+                  "runAfter": {
+                    "Collect_One_Snapshot": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  }
+                }
+              },
+              "limit": {
+                "count": 3,
+                "timeout": "PT12H"
+              },
+              "operationOptions": "FailWhenLimitsReached",
+              "runAfter": {
+                "Publication_End_UTC": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Set_Snapshot_Error_Context": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "ErrorCode",
+                "value": "NVD_SNAPSHOT_UNSTABLE"
+              },
+              "runAfter": {
+                "Collect_Matching_Snapshots": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Validate_Matched_Snapshots": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@and(variables('SnapshotMatched'), not(variables('CollectError')))",
+                "schema": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                }
+              },
+              "runAfter": {
+                "Set_Snapshot_Error_Context": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Remember_Published_Count": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "PublishedCount",
+                "value": "@length(variables('CurrentCves'))"
+              },
+              "runAfter": {
+                "Validate_Matched_Snapshots": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Set_Filter_Error_Context": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "ErrorCode",
+                "value": "CVSS_EVALUATION_FAILED"
+              },
+              "runAfter": {
+                "Remember_Published_Count": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Candidate_Critical_CVEs": {
+              "type": "Query",
+              "inputs": {
+                "from": "@variables('CurrentCves')",
+                "where": "@contains(string(coalesce(item()?['metrics'], json('{}'))), 'CRITICAL')"
+              },
+              "runAfter": {
+                "Set_Filter_Error_Context": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Check_All_CVEs": {
+              "type": "Foreach",
+              "foreach": "@sort(body('Candidate_Critical_CVEs'), 'id')",
+              "actions": {
+                "Critical_V4_Assessments": {
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@coalesce(items('Check_All_CVEs')?['metrics']?['cvssMetricV40'], json('[]'))",
+                    "where": "@and(equals(item()?['cvssData']?['version'], '4.0'), equals(item()?['cvssData']?['baseSeverity'], 'CRITICAL'))"
+                  },
+                  "runAfter": {}
+                },
+                "Critical_V31_Assessments": {
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@coalesce(items('Check_All_CVEs')?['metrics']?['cvssMetricV31'], json('[]'))",
+                    "where": "@and(equals(item()?['cvssData']?['version'], '3.1'), equals(item()?['cvssData']?['baseSeverity'], 'CRITICAL'))"
+                  },
+                  "runAfter": {
+                    "Critical_V4_Assessments": [
+                      "Succeeded"
+                    ]
+                  }
+                },
+                "If_Either_Critical": {
+                  "type": "If",
+                  "expression": "@or(not(empty(body('Critical_V4_Assessments'))), not(empty(body('Critical_V31_Assessments'))))",
+                  "actions": {
+                    "Remember_Critical_CVE": {
+                      "type": "AppendToArrayVariable",
+                      "inputs": {
+                        "name": "CriticalCves",
+                        "value": "@items('Check_All_CVEs')"
+                      },
+                      "runAfter": {}
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  },
+                  "runAfter": {
+                    "Critical_V31_Assessments": [
+                      "Succeeded"
+                    ]
+                  }
+                }
+              },
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "runAfter": {
+                "Candidate_Critical_CVEs": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Remember_Critical_Count": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "CriticalCount",
+                "value": "@length(variables('CriticalCves'))"
+              },
+              "runAfter": {
+                "Check_All_CVEs": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Remember_Collection_Time": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "CollectedAt",
+                "value": "@utcNow()"
+              },
+              "runAfter": {
+                "Remember_Critical_Count": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Record_Complete_Source": {
+              "type": "Compose",
+              "inputs": {
+                "ReportDate": "@variables('ReportDate')",
+                "CollectedAt": "@variables('CollectedAt')",
+                "PublicationStartUtc": "@outputs('Publication_Start_UTC')",
+                "PublicationEndUtcExclusive": "@outputs('Publication_Next_Midnight_UTC')",
+                "PublishedCount": "@variables('PublishedCount')",
+                "ScanCount": "@variables('ScanNumber')",
+                "Comparison": "Two complete sorted CVE arrays matched by value",
+                "Cves": "@sort(variables('CurrentCves'), 'id')",
+                "LLMUsed": false
+              },
+              "runAfter": {
+                "Remember_Collection_Time": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Set_Format_Error_Context": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "ErrorCode",
+                "value": "NATIVE_REPORT_FORMAT_FAILED"
+              },
+              "runAfter": {
+                "Record_Complete_Source": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Format_Complete_Report": {
+              "type": "Workflow",
+              "inputs": {
+                "host": {
+                  "triggerName": "manual",
+                  "workflow": {
+                    "id": "[resourceId('Microsoft.Logic/workflows', variables('formatterName'))]"
+                  }
+                },
+                "body": {
+                  "ReportDate": "@variables('ReportDate')",
+                  "CollectedAt": "@variables('CollectedAt')",
+                  "PublishedCount": "@variables('PublishedCount')",
+                  "Cves": "@variables('CriticalCves')"
+                },
+                "retryPolicy": {
+                  "type": "none"
+                }
+              },
+              "runAfter": {
+                "Set_Format_Error_Context": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Remember_Report_Body": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "ReportBody",
+                "value": "@body('Format_Complete_Report')?['ReportBody']"
+              },
+              "runAfter": {
+                "Format_Complete_Report": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Validate_Formatter_Count": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@and(equals(body('Format_Complete_Report')?['CriticalCount'], variables('CriticalCount')), equals(body('Format_Complete_Report')?['LLMUsed'], false))",
+                "schema": {
+                  "type": "boolean",
+                  "enum": [
+                    true
+                  ]
+                }
+              },
+              "runAfter": {
+                "Remember_Report_Body": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Report_Subject": {
+              "type": "Compose",
+              "inputs": "@concat('NVD CRITICAL Daily ', variables('ReportDate'), ' JST (', string(variables('CriticalCount')), ' CVEs)')",
+              "runAfter": {
+                "Validate_Formatter_Count": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Mail_Body_Html": {
+              "type": "Compose",
+              "inputs": "@concat('<pre style=\"font-family:Consolas,Menlo,monospace;font-size:12px;white-space:pre-wrap;word-wrap:break-word\">', replace(replace(replace(replace(variables('ReportBody'), '&', '&amp;'), '<', '&lt;'), '>', '&gt;'), '\"', '&quot;'), '</pre>')",
+              "runAfter": {
+                "Report_Subject": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Mail_Request_Object": {
+              "type": "Compose",
+              "inputs": {
+                "To": "@parameters('RecipientEmail')",
+                "Subject": "@outputs('Report_Subject')",
+                "Body": "@outputs('Mail_Body_Html')",
+                "From": "@parameters('SenderMailbox')",
+                "Importance": "Normal"
+              },
+              "runAfter": {
+                "Mail_Body_Html": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Mail_Request_JSON": {
+              "type": "Compose",
+              "inputs": "@string(outputs('Mail_Request_Object'))",
+              "runAfter": {
+                "Mail_Request_Object": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Encode_Mail_Request": {
+              "type": "Compose",
+              "inputs": "@base64(outputs('Mail_Request_JSON'))",
+              "runAfter": {
+                "Mail_Request_JSON": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Remember_Encoded_Request": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "RequestBase64",
+                "value": "@outputs('Encode_Mail_Request')"
+              },
+              "runAfter": {
+                "Encode_Mail_Request": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Exact_Request_Bytes": {
+              "type": "Compose",
+              "inputs": "@sub(div(mul(length(variables('RequestBase64')), 3), 4), if(endsWith(variables('RequestBase64'), '=='), 2, if(endsWith(variables('RequestBase64'), '='), 1, 0)))",
+              "runAfter": {
+                "Remember_Encoded_Request": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Remember_Request_Bytes": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "RequestBytes",
+                "value": "@outputs('Exact_Request_Bytes')"
+              },
+              "runAfter": {
+                "Exact_Request_Bytes": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Record_TEXT_Report": {
+              "type": "Compose",
+              "inputs": "@variables('ReportBody')",
+              "runAfter": {
+                "Remember_Request_Bytes": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Set_Prepared_Flag": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "Prepared",
+                "value": true
+              },
+              "runAfter": {
+                "Record_TEXT_Report": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Set_Ready_Result": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "ResultStatus",
+                "value": "ready"
+              },
+              "runAfter": {
+                "Set_Prepared_Flag": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "runAfter": {}
+        },
+        "Prepare_Catch": {
+          "type": "Scope",
+          "actions": {
+            "Prepare_Failed_Actions": {
+              "type": "Query",
+              "inputs": {
+                "from": "@result('Prepare_Try')",
+                "where": "@contains(json('[\"Failed\",\"TimedOut\"]'), item()?['status'])"
+              },
+              "runtimeConfiguration": {
+                "secureData": {
+                  "properties": [
+                    "inputs",
+                    "outputs"
+                  ]
+                }
+              },
+              "runAfter": {}
+            },
+            "Prepare_Failure_Summary": {
+              "type": "Select",
+              "inputs": {
+                "from": "@body('Prepare_Failed_Actions')",
+                "select": {
+                  "action": "@item()?['name']",
+                  "status": "@item()?['status']",
+                  "code": "@coalesce(item()?['error']?['code'], 'not_exposed')"
+                }
+              },
+              "runtimeConfiguration": {
+                "secureData": {
+                  "properties": [
+                    "inputs",
+                    "outputs"
+                  ]
+                }
+              },
+              "runAfter": {
+                "Prepare_Failed_Actions": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Prepare_Reason": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "ErrorReason",
+                "value": "@concat(variables('ErrorCode'), '; run ', workflow().run.name, '; ', take(string(body('Prepare_Failure_Summary')), 800))"
+              },
+              "runAfter": {
+                "Prepare_Failure_Summary": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Prepare_Result": {
+              "type": "SetVariable",
+              "inputs": {
+                "name": "ResultStatus",
+                "value": "@if(equals(variables('ErrorCode'), 'NVD_KEY_NOT_CONFIGURED'), 'configuration_required', 'preparation_failed')"
+              },
+              "runAfter": {
+                "Prepare_Reason": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "runAfter": {
+            "Prepare_Try": [
+              "Failed",
+              "TimedOut"
+            ]
+          }
+        }
+      },
+      "runAfter": {
+        "Initialize_NotBeforeUtc": [
+          "Succeeded"
+        ]
+      }
+    },
+    "If_Prepared": {
+      "type": "If",
+      "expression": "@variables('Prepared')",
+      "actions": {
+        "If_One_Mail_Fits": {
+          "type": "If",
+          "expression": "@lessOrEquals(variables('RequestBytes'), parameters('MaxMailRequestBytes'))",
+          "actions": {
+            "If_Mail_Sending_Enabled": {
+              "type": "If",
+              "expression": "@parameters('MailSendingEnabled')",
+              "actions": {
+                "Try_Delivery": {
+                  "type": "Scope",
+                  "actions": {
+                    "Submit_One_Mail": {
+                      "type": "Until",
+                      "expression": "@or(not(variables('RetryMail')), greaterOrEquals(variables('MailAttempt'), 4))",
+                      "actions": {
+                        "Clear_Mail_Retry": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "RetryMail",
+                            "value": false
+                          },
+                          "runAfter": {}
+                        },
+                        "Reset_Mail_Attempt_Result": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "ResultStatus",
+                            "value": "submitting"
+                          },
+                          "runAfter": {
+                            "Clear_Mail_Retry": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "If_Retry_Time_Is_Future": {
+                          "type": "If",
+                          "expression": "@greater(ticks(variables('NotBeforeUtc')), ticks(utcNow()))",
+                          "actions": {
+                            "Wait_Mail_Retry_After": {
+                              "type": "Wait",
+                              "inputs": {
+                                "until": {
+                                  "timestamp": "@variables('NotBeforeUtc')"
+                                }
+                              },
+                              "runAfter": {}
+                            }
+                          },
+                          "else": {
+                            "actions": {}
+                          },
+                          "runAfter": {
+                            "Reset_Mail_Attempt_Result": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Advance_Mail_Attempt": {
+                          "type": "IncrementVariable",
+                          "inputs": {
+                            "name": "MailAttempt",
+                            "value": 1
+                          },
+                          "runAfter": {
+                            "If_Retry_Time_Is_Future": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Record_Submission_Attempt": {
+                          "type": "Compose",
+                          "inputs": {
+                            "ReportDate": "@variables('ReportDate')",
+                            "Attempt": "@variables('MailAttempt')",
+                            "RunId": "@workflow().run.name",
+                            "Status": "submitting",
+                            "RequestBytes": "@variables('RequestBytes')"
+                          },
+                          "runAfter": {
+                            "Advance_Mail_Attempt": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Send_Office365_Mail": {
+                          "type": "ApiConnection",
+                          "inputs": {
+                            "host": {
+                              "connection": {
+                                "name": "@parameters('$connections')['office365']['connectionId']"
+                              }
+                            },
+                            "method": "post",
+                            "path": "/v2/Mail",
+                            "body": "@outputs('Mail_Request_Object')",
+                            "retryPolicy": {
+                              "type": "none"
+                            }
+                          },
+                          "runtimeConfiguration": {
+                            "secureData": {
+                              "properties": [
+                                "inputs"
+                              ]
+                            }
+                          },
+                          "runAfter": {
+                            "Record_Submission_Attempt": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Remember_Mail_HTTP_Status": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "MailHttpStatus",
+                            "value": "@int(coalesce(outputs('Send_Office365_Mail')?['statusCode'], 0))"
+                          },
+                          "runAfter": {
+                            "Send_Office365_Mail": [
+                              "Succeeded",
+                              "Failed",
+                              "TimedOut",
+                              "Skipped"
+                            ]
+                          }
+                        },
+                        "Mail_Response_Class": {
+                          "type": "Compose",
+                          "inputs": "@if(or(equals(variables('MailHttpStatus'), 200), equals(variables('MailHttpStatus'), 202)), 'accepted', if(equals(variables('MailHttpStatus'), 429), 'retry', if(and(greaterOrEquals(variables('MailHttpStatus'), 400), less(variables('MailHttpStatus'), 500), not(equals(variables('MailHttpStatus'), 408))), 'rejected', 'uncertain')))",
+                          "runAfter": {
+                            "Remember_Mail_HTTP_Status": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Classify_Mail_Response": {
+                          "type": "Switch",
+                          "expression": "@outputs('Mail_Response_Class')",
+                          "cases": {
+                            "Accepted": {
+                              "case": "accepted",
+                              "actions": {
+                                "Remember_Acceptance_Id": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "MailRequestId",
+                                    "value": "@coalesce(outputs('Send_Office365_Mail')?['headers']?['x-ms-request-id'], outputs('Send_Office365_Mail')?['headers']?['X-MS-Request-ID'], outputs('Send_Office365_Mail')?['headers']?['request-id'], 'Not returned')"
+                                  },
+                                  "runAfter": {}
+                                },
+                                "Set_Accepted_Result": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "ResultStatus",
+                                    "value": "mail_accepted"
+                                  },
+                                  "runAfter": {
+                                    "Remember_Acceptance_Id": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                },
+                                "Clear_Accepted_Error": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "ErrorCode",
+                                    "value": "@concat('')"
+                                  },
+                                  "runAfter": {
+                                    "Set_Accepted_Result": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                },
+                                "Clear_Accepted_Reason": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "ErrorReason",
+                                    "value": "@concat('')"
+                                  },
+                                  "runAfter": {
+                                    "Clear_Accepted_Error": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            "Throttled": {
+                              "case": "retry",
+                              "actions": {
+                                "Retry_After_Seconds": {
+                                  "type": "Compose",
+                                  "inputs": "@string(coalesce(outputs('Send_Office365_Mail')?['headers']?['Retry-After'], outputs('Send_Office365_Mail')?['headers']?['retry-after'], '900'))",
+                                  "runAfter": {}
+                                },
+                                "Validate_Retry_After": {
+                                  "type": "ParseJson",
+                                  "inputs": {
+                                    "content": "@outputs('Retry_After_Seconds')",
+                                    "schema": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 6
+                                    }
+                                  },
+                                  "runAfter": {
+                                    "Retry_After_Seconds": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                },
+                                "Validate_Retry_After_Digits": {
+                                  "type": "ParseJson",
+                                  "inputs": {
+                                    "content": "@and(greater(length(outputs('Retry_After_Seconds')), 0), equals(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(outputs('Retry_After_Seconds'), '0', ''), '1', ''), '2', ''), '3', ''), '4', ''), '5', ''), '6', ''), '7', ''), '8', ''), '9', ''), ''))",
+                                    "schema": {
+                                      "type": "boolean",
+                                      "enum": [
+                                        true
+                                      ]
+                                    }
+                                  },
+                                  "runAfter": {
+                                    "Validate_Retry_After": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                },
+                                "Set_Not_Before": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "NotBeforeUtc",
+                                    "value": "@addSeconds(utcNow(), max(1, int(outputs('Retry_After_Seconds'))))"
+                                  },
+                                  "runAfter": {
+                                    "Validate_Retry_After_Digits": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                },
+                                "Set_Throttled_Result": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "ResultStatus",
+                                    "value": "retry_wait"
+                                  },
+                                  "runAfter": {
+                                    "Set_Not_Before": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                },
+                                "Set_Throttled_Code": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "ErrorCode",
+                                    "value": "MAIL_THROTTLED"
+                                  },
+                                  "runAfter": {
+                                    "Set_Throttled_Result": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                },
+                                "Set_Throttled_Reason": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "ErrorReason",
+                                    "value": "@concat('Office 365 returned HTTP 429; Retry-After seconds ', outputs('Retry_After_Seconds'), '. Missing header uses 900 seconds; only this explicit rejection permits automatic retry.')"
+                                  },
+                                  "runAfter": {
+                                    "Set_Throttled_Code": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                },
+                                "Allow_429_Retry": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "RetryMail",
+                                    "value": true
+                                  },
+                                  "runAfter": {
+                                    "Set_Throttled_Reason": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            "Rejected": {
+                              "case": "rejected",
+                              "actions": {
+                                "Set_Rejected_Code": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "ErrorCode",
+                                    "value": "@if(equals(variables('MailHttpStatus'), 413), 'MAIL_TOO_LARGE', concat('MAIL_REJECTED_', string(variables('MailHttpStatus'))))"
+                                  },
+                                  "runAfter": {}
+                                },
+                                "Set_Rejected_Reason": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "ErrorReason",
+                                    "value": "@concat('Office 365 explicitly rejected the single mail: HTTP ', string(variables('MailHttpStatus')), '. Nothing was truncated, split or attached. Inspect this run before manual retry.')"
+                                  },
+                                  "runAfter": {
+                                    "Set_Rejected_Code": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                },
+                                "Set_Rejected_Result": {
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "ResultStatus",
+                                    "value": "blocked"
+                                  },
+                                  "runAfter": {
+                                    "Set_Rejected_Reason": [
+                                      "Succeeded"
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "default": {
+                            "actions": {
+                              "Set_Uncertain_Code": {
+                                "type": "SetVariable",
+                                "inputs": {
+                                  "name": "ErrorCode",
+                                  "value": "MAIL_DELIVERY_UNCERTAIN"
+                                },
+                                "runAfter": {}
+                              },
+                              "Set_Uncertain_Reason": {
+                                "type": "SetVariable",
+                                "inputs": {
+                                  "name": "ErrorReason",
+                                  "value": "@concat('Office 365 send acceptance is unknown (HTTP ', string(variables('MailHttpStatus')), '). No automatic resend. Check this run, Sent Items and message trace before any manual execution.')"
+                                },
+                                "runAfter": {
+                                  "Set_Uncertain_Code": [
+                                    "Succeeded"
+                                  ]
+                                }
+                              },
+                              "Set_Uncertain_Result": {
+                                "type": "SetVariable",
+                                "inputs": {
+                                  "name": "ResultStatus",
+                                  "value": "delivery_uncertain"
+                                },
+                                "runAfter": {
+                                  "Set_Uncertain_Reason": [
+                                    "Succeeded"
+                                  ]
+                                }
+                              }
+                            }
+                          },
+                          "runAfter": {
+                            "Mail_Response_Class": [
+                              "Succeeded"
+                            ]
+                          }
+                        }
+                      },
+                      "limit": {
+                        "count": 4,
+                        "timeout": "P2D"
+                      },
+                      "operationOptions": "FailWhenLimitsReached",
+                      "runAfter": {}
+                    }
+                  },
+                  "runAfter": {}
+                },
+                "Catch_Delivery": {
+                  "type": "Scope",
+                  "actions": {
+                    "If_Response_Not_Classified": {
+                      "type": "If",
+                      "expression": "@not(contains(json('[\"mail_accepted\",\"blocked\",\"retry_wait\",\"delivery_uncertain\"]'), variables('ResultStatus')))",
+                      "actions": {
+                        "Set_Delivery_Error": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "ErrorCode",
+                            "value": "MAIL_RESULT_UNCERTAIN"
+                          },
+                          "runAfter": {}
+                        },
+                        "Set_Delivery_Reason": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "ErrorReason",
+                            "value": "@concat('Unable to complete mail result classification. Run ', workflow().run.name, '. No automatic resend; inspect history and message trace.')"
+                          },
+                          "runAfter": {
+                            "Set_Delivery_Error": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Set_Delivery_Uncertain": {
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "ResultStatus",
+                            "value": "delivery_uncertain"
+                          },
+                          "runAfter": {
+                            "Set_Delivery_Reason": [
+                              "Succeeded"
+                            ]
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      },
+                      "runAfter": {}
+                    }
+                  },
+                  "runAfter": {
+                    "Try_Delivery": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "Set_Preview_Code": {
+                    "type": "SetVariable",
+                    "inputs": {
+                      "name": "ErrorCode",
+                      "value": "MAIL_SENDING_DISABLED"
+                    },
+                    "runAfter": {}
+                  },
+                  "Set_Preview_Reason": {
+                    "type": "SetVariable",
+                    "inputs": {
+                      "name": "ErrorReason",
+                      "value": "Complete TEXT and request prepared in this run; no mail was sent. Inspect history before any rerun."
+                    },
+                    "runAfter": {
+                      "Set_Preview_Code": [
+                        "Succeeded"
+                      ]
+                    }
+                  }
+                }
+              },
+              "runAfter": {}
+            }
+          },
+          "else": {
+            "actions": {
+              "Set_Size_Error_Code": {
+                "type": "SetVariable",
+                "inputs": {
+                  "name": "ErrorCode",
+                  "value": "MAIL_TOO_LARGE"
+                },
+                "runAfter": {}
+              },
+              "Set_Size_Error_Reason": {
+                "type": "SetVariable",
+                "inputs": {
+                  "name": "ErrorReason",
+                  "value": "@concat('Exact mail request ', string(variables('RequestBytes')), ' bytes exceeds configured ', string(parameters('MaxMailRequestBytes')), '. Full prepared TEXT is retained in this run history; no truncation or splitting.')"
+                },
+                "runAfter": {
+                  "Set_Size_Error_Code": [
+                    "Succeeded"
+                  ]
+                }
+              },
+              "Set_Too_Large_Result": {
+                "type": "SetVariable",
+                "inputs": {
+                  "name": "ResultStatus",
+                  "value": "blocked"
+                },
+                "runAfter": {
+                  "Set_Size_Error_Reason": [
+                    "Succeeded"
+                  ]
+                }
+              }
+            }
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Prepare_This_Run": [
+          "Succeeded",
+          "Failed",
+          "TimedOut",
+          "Skipped"
+        ]
+      }
+    },
+    "Record_Audit_Event": {
+      "type": "Compose",
+      "inputs": {
+        "ReportDate": "@variables('ReportDate')",
+        "Status": "@variables('ResultStatus')",
+        "PublishedCount": "@if(less(variables('PublishedCount'), 0), json('null'), variables('PublishedCount'))",
+        "CriticalCount": "@if(less(variables('CriticalCount'), 0), json('null'), variables('CriticalCount'))",
+        "RequestBytes": "@if(less(variables('RequestBytes'), 0), json('null'), variables('RequestBytes'))",
+        "MailHttpStatus": "@variables('MailHttpStatus')",
+        "MailRequestId": "@variables('MailRequestId')",
+        "ErrorCode": "@variables('ErrorCode')",
+        "ErrorReason": "@variables('ErrorReason')",
+        "CollectedAt": "@variables('CollectedAt')",
+        "RunId": "@workflow().run.name",
+        "LLMUsed": false,
+        "CrossRunDuplicateProtection": false,
+        "MailAcceptanceIsNotDelivery": true,
+        "MailSendingEnabled": "@parameters('MailSendingEnabled')",
+        "NvdKeyConfigured": "@and(greaterOrEquals(length(parameters('NvdApiKey')), 16), not(startsWith(parameters('NvdApiKey'), '<')), not(contains(parameters('NvdApiKey'), ' ')), not(contains(parameters('NvdApiKey'), decodeUriComponent('%0A'))), not(contains(parameters('NvdApiKey'), decodeUriComponent('%0D'))), not(contains(parameters('NvdApiKey'), decodeUriComponent('%09'))))"
+      },
+      "trackedProperties": {
+        "ReportDate": "@action()?['inputs']?['ReportDate']",
+        "Status": "@action()?['inputs']?['Status']",
+        "PublishedCount": "@action()?['inputs']?['PublishedCount']",
+        "CriticalCount": "@action()?['inputs']?['CriticalCount']",
+        "RequestBytes": "@action()?['inputs']?['RequestBytes']",
+        "MailHttpStatus": "@action()?['inputs']?['MailHttpStatus']",
+        "MailRequestId": "@action()?['inputs']?['MailRequestId']",
+        "ErrorCode": "@action()?['inputs']?['ErrorCode']",
+        "ErrorReason": "@action()?['inputs']?['ErrorReason']",
+        "CollectedAt": "@action()?['inputs']?['CollectedAt']",
+        "RunId": "@action()?['inputs']?['RunId']",
+        "LLMUsed": "@action()?['inputs']?['LLMUsed']",
+        "CrossRunDuplicateProtection": "@action()?['inputs']?['CrossRunDuplicateProtection']",
+        "MailAcceptanceIsNotDelivery": "@action()?['inputs']?['MailAcceptanceIsNotDelivery']",
+        "MailSendingEnabled": "@action()?['inputs']?['MailSendingEnabled']",
+        "NvdKeyConfigured": "@action()?['inputs']?['NvdKeyConfigured']"
+      },
+      "runAfter": {
+        "If_Prepared": [
+          "Succeeded",
+          "Failed",
+          "TimedOut",
+          "Skipped"
+        ]
+      }
+    },
+    "Return_Day_State": {
+      "type": "Response",
+      "kind": "Http",
+      "inputs": {
+        "statusCode": "@if(equals(variables('ResultStatus'), 'mail_accepted'), 200, 409)",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": "@outputs('Record_Audit_Event')"
+      },
+      "runAfter": {
+        "Record_Audit_Event": [
+          "Succeeded"
+        ]
+      }
+    },
+    "If_Day_Not_Accepted": {
+      "type": "If",
+      "expression": "@not(equals(variables('ResultStatus'), 'mail_accepted'))",
+      "actions": {
+        "Fail_Unaccepted_Day": {
+          "type": "Terminate",
+          "inputs": {
+            "runStatus": "Failed",
+            "runError": {
+              "code": "@variables('ErrorCode')",
+              "message": "@variables('ErrorReason')"
+            }
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Return_Day_State": [
+          "Succeeded"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}

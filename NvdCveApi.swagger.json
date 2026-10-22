@@ -1,0 +1,211 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "NVD Daily Publication Pages",
+    "version": "2.0",
+    "description": "Read every NVD publication-day page. Severity filters are deliberately absent; all CVSS 4.0 and 3.1 assessment sources are evaluated by the workflow."
+  },
+  "host": "services.nvd.nist.gov",
+  "basePath": "/",
+  "schemes": ["https"],
+  "produces": ["application/json"],
+  "security": [],
+  "paths": {
+    "/rest/json/cves/2.0": {
+      "get": {
+        "operationId": "FetchNvdPublicationPage",
+        "summary": "Fetch one complete publication-day page",
+        "description": "Use a completed JST day converted to UTC. Advance startIndex by the actual response length until totalResults is reached. resultsPerPage is a page size, never a total-result cap.",
+        "parameters": [
+          {
+            "name": "apiKey",
+            "in": "header",
+            "required": true,
+            "type": "string",
+            "format": "password",
+            "description": "Supplied at runtime from the worker's SecureString NvdApiKey parameter, never connector credentials."
+          },
+          {
+            "name": "pubStartDate",
+            "in": "query",
+            "required": true,
+            "type": "string",
+            "description": "Inclusive UTC start with milliseconds and Z"
+          },
+          {
+            "name": "pubEndDate",
+            "in": "query",
+            "required": true,
+            "type": "string",
+            "description": "Inclusive UTC end: next JST midnight minus one millisecond"
+          },
+          {
+            "name": "startIndex",
+            "in": "query",
+            "required": true,
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          {
+            "name": "resultsPerPage",
+            "in": "query",
+            "required": true,
+            "type": "integer",
+            "format": "int32",
+            "minimum": 1,
+            "maximum": 2000,
+            "default": 200
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "NVD CVEs and complete pagination metadata",
+            "schema": {"$ref": "#/definitions/Page"}
+          },
+          "403": {"description": "Invalid key or access denied; not zero results"},
+          "429": {"description": "Rate limited; respect Retry-After"},
+          "503": {"description": "Transient upstream failure; safe GET retry"}
+        }
+      }
+    }
+  },
+  "definitions": {
+    "Page": {
+      "type": "object",
+      "required": ["startIndex", "resultsPerPage", "totalResults", "vulnerabilities"],
+      "properties": {
+        "startIndex": {"type": "integer", "minimum": 0},
+        "resultsPerPage": {"type": "integer", "minimum": 0, "maximum": 2000},
+        "totalResults": {"type": "integer", "minimum": 0},
+        "vulnerabilities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["cve"],
+            "properties": {"cve": {"$ref": "#/definitions/Cve"}}
+          }
+        }
+      }
+    },
+    "Cve": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "published"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^CVE-\\d{4}-\\d{4,}$"},
+        "published": {"type": "string", "minLength": 19},
+        "lastModified": {"type": "string"},
+        "vulnStatus": {"type": "string"},
+        "descriptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["value"],
+            "properties": {
+              "lang": {"type": "string"},
+              "value": {"type": "string"}
+            }
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "cvssMetricV40": {
+              "type": "array",
+              "items": {"$ref": "#/definitions/Assessment40"}
+            },
+            "cvssMetricV31": {
+              "type": "array",
+              "items": {"$ref": "#/definitions/Assessment31"}
+            }
+          }
+        },
+        "configurations": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/Configuration"}
+        },
+        "affected": {
+          "type": "array",
+          "items": {"type": "object", "additionalProperties": true}
+        }
+      }
+    },
+    "Assessment40": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["cvssData"],
+      "properties": {
+        "source": {"type": "string"},
+        "type": {"type": "string"},
+        "cvssData": {
+          "allOf": [
+            {"$ref": "#/definitions/BaseScore"},
+            {"properties": {"version": {"enum": ["4.0"]}}}
+          ]
+        }
+      }
+    },
+    "Assessment31": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["cvssData"],
+      "properties": {
+        "source": {"type": "string"},
+        "type": {"type": "string"},
+        "cvssData": {
+          "allOf": [
+            {"$ref": "#/definitions/BaseScore"},
+            {"properties": {"version": {"enum": ["3.1"]}}}
+          ]
+        }
+      }
+    },
+    "BaseScore": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["version", "baseScore", "baseSeverity"],
+      "properties": {
+        "version": {"type": "string"},
+        "baseScore": {"type": "number", "minimum": 0, "maximum": 10},
+        "baseSeverity": {
+          "type": "string",
+          "enum": ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
+        }
+      }
+    },
+    "Configuration": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "operator": {"type": "string", "enum": ["AND", "OR"]},
+        "negate": {"type": "boolean"},
+        "nodes": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/Configuration"}
+        },
+        "children": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/Configuration"}
+        },
+        "cpeMatch": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["vulnerable", "criteria"],
+            "properties": {
+              "vulnerable": {"type": "boolean"},
+              "criteria": {"type": "string"},
+              "versionStartIncluding": {"type": "string"},
+              "versionStartExcluding": {"type": "string"},
+              "versionEndIncluding": {"type": "string"},
+              "versionEndExcluding": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

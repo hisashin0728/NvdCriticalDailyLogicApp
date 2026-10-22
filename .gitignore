@@ -1,0 +1,5 @@
+__pycache__/
+.venv/
+*.local.parameters.json
+.azure/
+infra/main.json

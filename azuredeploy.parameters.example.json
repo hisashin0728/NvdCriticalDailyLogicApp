@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "namePrefix": {"value": "nvdcriticaldaily"},
+    "location": {"value": "japaneast"},
+    "firstReportDate": {"value": "2026-10-20"},
+    "senderMailbox": {"value": "<SENDER-MAILBOX-UPN>"},
+    "recipientEmail": {"value": "<ONE-RECIPIENT-OR-DISTRIBUTION-LIST>"},
+    "nvdApiKey": {"value": "<YOUR-NVD-API-KEY>"},
+    "nvdPageSize": {"value": 200},
+    "maxMailRequestBytes": {"value": 3000000},
+    "createOffice365Connection": {"value": true},
+    "logAnalyticsWorkspaceId": {"value": ""},
+    "scheduleState": {"value": "Disabled"},
+    "mailSendingEnabled": {"value": false}
+  }
+}
