@@ -248,6 +248,7 @@ NVD 取得から本文の作成までを行い、メールは送りません（`
 │   └── formatter.json
 ├── infra/                            # subscription スコープのラッパー（Bicep）
 ├── docs/OPERATIONS.md                # 運用・設計ガイド
+├── LICENSE                           # MIT License
 ├── tools/build_template.py           # ARM テンプレート / ワークフローの生成スクリプト
 ├── tests/                            # ローカルテスト（ワークフロー定義の検証・再生テスト）
 └── Test-Template.ps1                 # ARM-TTK 実行ヘルパー
@@ -259,6 +260,10 @@ NVD 取得から本文の作成までを行い、メールは送りません（`
 python .\tools\build_template.py          # 再生成
 python -m unittest tests.test_native -v   # テスト
 ```
+
+## ライセンス
+
+[MIT License](LICENSE) で公開しています。
 
 ## 免責事項
 
